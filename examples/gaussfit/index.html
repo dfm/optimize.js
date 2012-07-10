@@ -5,7 +5,9 @@
 
     <title>optimize.js &mdash; Fit a Gaussian with a Background</title>
 
-    <script type="text/javascript" src="http://d3js.org/d3.v2.min.js"></script>
+    <script type="text/javascript" src="../../jquery.min.js"></script>
+    <script type="text/javascript" src="../../d3.v2.min.js"></script>
+    <!-- <script type="text/javascript" src="http://d3js.org/d3.v2.min.js"></script> -->
     <script type="text/javascript" src="../../sylvester-min.js"></script>
     <script type="text/javascript" src="../../optimize.js"></script>
 
@@ -15,7 +17,7 @@
             background: #fff;
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-weight: 300;
-            color: #eee;
+            color: #222;
         }
 
         a {
@@ -38,6 +40,28 @@
             color: #444;
         }
 
+        .header:before,
+        .header:after {
+            display: table;
+            content: "";
+        }
+
+        .header:after {
+            clear: both;
+        }
+
+        .header .top-left {
+            float: left;
+        }
+
+        .header .top-right {
+            float: right;
+        }
+
+        .legend {
+            text-align: center;
+        }
+
         .data {
             color: #111;
         }
@@ -48,6 +72,31 @@
 
         .fit {
             color: #049cdb;
+        }
+
+        .btn {
+            font-size: 24px;
+            background-color: #333;
+            color: #eee;
+            padding: 3px 10px 5px;
+            min-width: 20px;
+            display: inline-block;
+            text-align: center;
+            margin: 0 5px;
+
+            -webkit-border-radius: 5px;
+               -moz-border-radius: 5px;
+                    border-radius: 5px;
+        }
+
+        .comp-btn {
+            font-weight: bold;
+        }
+
+        #order {
+            font-size: 20px;
+            font-weight: bold;
+            color: #111;
         }
 
         #container {
@@ -75,15 +124,30 @@
         <a href="https://github.com/dfm/optimize.js">optimize.js</a>
         <small>| Fit a Gaussian with a Background</small>
     </h1>
-    <p><span class="data">Data</span> | <span class="truth">Truth</span> |
-    <span class="fit">Fit</span></p>
+    <div class="header">
+        <div class="top-left">
+            <a href="javascript:regenerate();" class="btn">Regenerate</a>
+        </div>
+        <div class="top-right">
+            Continuum complexity:
+            <a href="javascript:window.order--;do_fit();" class="btn comp-btn">-</a>
+            <span id="order">0</span>
+            <a href="javascript:window.order++;do_fit();" class="btn comp-btn">+</a>
+        </div>
+    </div>
+</div>
+
+<div class="legend">
+    <span class="data">Data</span> |
+    <span class="truth">Truth</span> |
+    <span class="fit">Fit</span>
 </div>
 
 <script type="text/javascript" charset="utf-8">
 
-var i, x, truth = [-0.6, 0.05, 0.0, 4.3, -1.6, 1.5, 2.1], model = function (a, x) {
+var i, x, truth, model = function (a, x) {
     var i, j, result = [], sig2 = a[1] * a[1], norm;
-    norm = a[0] / Math.sqrt(2 * Math.PI * sig2);
+    norm = a[0]; // / Math.sqrt(2 * Math.PI * sig2);
 
     x = optimize.vector.atleast_1d(x);
     a = optimize.vector.atleast_1d(a);
@@ -105,23 +169,34 @@ var i, x, truth = [-0.6, 0.05, 0.0, 4.3, -1.6, 1.5, 2.1], model = function (a, x
 // Generating some fake data.
 xrange = [-1, 1];
 data = [];
+true_data = [];
 noise = 0.7;
-for (i = 0; i < 100; i++) {
-    var x0 = (xrange[1] - xrange[0]) * Math.random() + xrange[0];
-    data.push({x: x0, y: model(truth, x0)[0] + noise * window.randomNormal()});
-}
+
+var generate_data = function () {
+    truth = [-5 * Math.random(), 0.2 + 0.01 * Math.random(),
+          0.5 * ((xrange[1] - xrange[0]) * Math.random() + xrange[0]),
+          5 * Math.random(), Math.random(), 1.5 * Math.random(),
+          2 * Math.random()];
+    console.log(truth);
+    data = [];
+    true_data = [];
+    for (i = 0; i < 100; i++) {
+        var x0 = (xrange[1] - xrange[0]) * Math.random() + xrange[0];
+        data.push({x: x0, y: model(truth, x0)[0] + noise * window.randomNormal()});
+    }
+
+    for (i = xrange[0]; i <= xrange[1]; i += (xrange[1] - xrange[0]) / 500.) {
+        true_data.push({x: i, y: model(truth, i)[0]});
+    }
+
+    x_scale = d3.scale.linear().range([0, 800]).domain(xrange);
+    y_scale = d3.scale.linear().range([500, 0])
+        .domain([d3.min(data, function (d) { return d.y - noise; }) - 0.5,
+                d3.max(data, function (d) { return d.y + noise; }) + 0.5]);
+};
+generate_data();
 
 // Truth line.
-true_data = [];
-for (i = xrange[0]; i <= xrange[1]; i += (xrange[1] - xrange[0]) / 500.) {
-    true_data.push({x: i, y: model(truth, i)[0]});
-}
-
-// Plotting.
-var x_scale = d3.scale.linear().range([0, 800]).domain(xrange);
-var y_scale = d3.scale.linear().range([500, 0])
-    .domain([d3.min(data, function (d) { return d.y - noise; }) - 0.5,
-             d3.max(data, function (d) { return d.y + noise; }) + 0.5]);
 
 var svg = d3.select("#container").append("svg:svg")
         .attr("width", 800)
@@ -168,12 +243,18 @@ var draw_fit = function (p) {
     for (i = xrange[0]; i <= xrange[1]; i += (xrange[1] - xrange[0]) / 500.) {
         fit_data.push({x: i, y: model(p, i)[0]});
     }
-    fit_line.attr("d", line(fit_data));
-    console.log(fit_line);
+    fit_line.transition().attr("d", line(fit_data));
 };
 
-var do_fit = function (order) {
-    var i, p0 = [-1.0, 0.1, 0.0], p1, chi;
+var do_fit = function () {
+    var i, p0 = [-0.5, 0.3, 0.0], p1, chi;
+    var order = window.order;
+    if (order < 0) {
+        window.order = 0;
+        order = 0;
+    }
+    $("#order").text(window.order);
+
     for (i = 0; i <= order; i++) {
         p0.push(0.0);
     }
@@ -188,8 +269,22 @@ var do_fit = function (order) {
     draw_fit(p1);
 };
 
-console.log("optimizing");
-draw_fit([-1.0, 0.1, 0.0, d3.median(data, function (d) { return d.y; })]);
+var regenerate = function () {
+    generate_data();
+    datapoints.transition()
+            .duration(750)
+            .attr("cx", function(d, i) { return x_scale(data[i].x); })
+            .attr("cy", function(d, i) { return y_scale(data[i].y); });
+    errorbars.transition()
+            .duration(750)
+            .attr("x1", function (d, i) { return x_scale(data[i].x); })
+            .attr("x2", function (d, i) { return x_scale(data[i].x); })
+            .attr("y1", function (d, i) { return y_scale(data[i].y - noise); })
+            .attr("y2", function (d, i) { return y_scale(data[i].y + noise); })
+};
+
+window.order = 0;
+do_fit();
 
 </script>
 
