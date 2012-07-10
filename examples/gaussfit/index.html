@@ -126,7 +126,8 @@
     </h1>
     <div class="header">
         <div class="top-left">
-            <a href="javascript:regenerate();" class="btn">Regenerate</a>
+            <a href="javascript:regenerate();" class="btn">New Dataset</a>
+            <a href="javascript:do_fit();" class="btn">Fit</a>
         </div>
         <div class="top-right">
             Continuum complexity:
@@ -147,7 +148,7 @@
 
 var i, x, truth, model = function (a, x) {
     var i, j, result = [], sig2 = a[1] * a[1], norm;
-    norm = a[0]; // / Math.sqrt(2 * Math.PI * sig2);
+    norm = a[0] / Math.sqrt(2 * Math.PI * sig2);
 
     x = optimize.vector.atleast_1d(x);
     a = optimize.vector.atleast_1d(a);
@@ -170,17 +171,16 @@ var i, x, truth, model = function (a, x) {
 xrange = [-1, 1];
 data = [];
 true_data = [];
-noise = 0.7;
+noise = 0.2;
 
 var generate_data = function () {
-    truth = [-5 * Math.random(), 0.2 + 0.01 * Math.random(),
-          0.5 * ((xrange[1] - xrange[0]) * Math.random() + xrange[0]),
-          5 * Math.random(), Math.random(), 1.5 * Math.random(),
-          2 * Math.random()];
-    console.log(truth);
+    truth = [-2 * Math.random(), 0.1 + 0.01 * Math.random(),
+          0.2 * ((xrange[1] - xrange[0]) * Math.random() + xrange[0]),
+          5 * Math.random() - 2.5, 3 * Math.random() - 1.5,
+          Math.random() - 0.5, Math.random() - 0.5];
     data = [];
     true_data = [];
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < 200; i++) {
         var x0 = (xrange[1] - xrange[0]) * Math.random() + xrange[0];
         data.push({x: x0, y: model(truth, x0)[0] + noise * window.randomNormal()});
     }
@@ -209,10 +209,10 @@ var line = d3.svg.line()
 
 var true_line = svg.append("svg:path")
         .attr("d", line(true_data))
-        .attr("stroke-width", 3.0)
+        .attr("stroke-width", 5.0)
         .attr("stroke", "#f89406")
         .attr("fill", "transparent")
-        .attr("opacity", 0.5);
+        .attr("opacity", 0.7);
 
 // Fit the line.
 var fit_line = svg.append("svg:path")
@@ -226,7 +226,7 @@ var datapoints = svg.selectAll("circle")
     .enter().append("circle")
         .attr("cx", function(d) { return x_scale(d.x); })
         .attr("cy", function(d) { return y_scale(d.y); })
-        .attr("r", 5);
+        .attr("r", 4);
 
 var errorbars = svg.selectAll("line")
         .data(data)
@@ -236,7 +236,7 @@ var errorbars = svg.selectAll("line")
         .attr("y1", function (d) { return y_scale(d.y - noise); })
         .attr("y2", function (d) { return y_scale(d.y + noise); })
         .attr("stroke", "black")
-        .attr("stroke-width", 3.0);
+        .attr("stroke-width", 2.0);
 
 var draw_fit = function (p) {
     var fit_data = [];
@@ -247,7 +247,7 @@ var draw_fit = function (p) {
 };
 
 var do_fit = function () {
-    var i, p0 = [-0.5, 0.3, 0.0], p1, chi;
+    var i, p0 = [-5, 0.1, 0.1, d3.median(data, function (d) { return d.y; })], p1, chi;
     var order = window.order;
     if (order < 0) {
         window.order = 0;
@@ -255,17 +255,28 @@ var do_fit = function () {
     }
     $("#order").text(window.order);
 
-    for (i = 0; i <= order; i++) {
+    for (i = 1; i <= order; i++) {
         p0.push(0.0);
     }
     chi = function (p) {
         var i, chi = [];
+        if (Math.abs(p[1]) > (xrange[1] - xrange[0]) ||
+                p[2] > xrange[1] || p[2] < xrange[0]) {
+            for (i = 0; i < data.length; i++) {
+                chi.push(1e10);
+            }
+        }
         for (i = 0; i < data.length; i++) {
             chi.push((data[i].y - model(p, data[i].x)[0]) / noise);
         }
         return chi;
     };
+    chi2 = function (p) {
+        var c = chi(p);
+        return optimize.vector.dot(c, c);
+    };
     p1 = optimize.newton(chi, p0);
+    // p1 = optimize.fmin(chi2, p0);
     draw_fit(p1);
 };
 
@@ -281,6 +292,9 @@ var regenerate = function () {
             .attr("x2", function (d, i) { return x_scale(data[i].x); })
             .attr("y1", function (d, i) { return y_scale(data[i].y - noise); })
             .attr("y2", function (d, i) { return y_scale(data[i].y + noise); })
+    true_line.transition()
+            .duration(750)
+            .attr("d", line(true_data));
 };
 
 window.order = 0;
