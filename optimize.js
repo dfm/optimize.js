@@ -1,3 +1,24 @@
+window._randNorm = null;
+window.randomNormal = function () {
+    // Box-Muller transform for normally distributed random numbers.
+    // http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform
+    var f, u, v, s = 0.0;
+    if (window._randNorm !== null &&
+            typeof(window._randNorm) !== "undefined") {
+        var tmp = window._randNorm;
+        window._randNorm = null;
+        return tmp;
+    }
+    while (s === 0.0 || s >= 1.0) {
+        u = 2 * Math.random() - 1;
+        v = 2 * Math.random() - 1;
+        s = u * u + v * v;
+    }
+    f = Math.sqrt(-2 * Math.log(s) / s);
+    window._randNorm = v * f;
+    return u * f;
+};
+
 window.optimize = (function () {
 
     var optimize = {}, vector = {}, _q = function (x) {
@@ -125,27 +146,50 @@ window.optimize = (function () {
     // ============ //
 
     optimize._approx_fprime = function (x, f, ep) {
-        // Approximate the gradient of a function using forward finite-
-        // difference.
+        // Approximate the N dimensional gradient of a scalar function using
+        // forward finite difference.
         var i, f0 = f(x), grad = new Array();
         x = vector.atleast_1d(x);
         if (typeof(ep.length) === "undefined") {
-            // `ep` is a scalar.
-            for (i = 0; i < x.length; i++) {
-                x[i] += ep;
-                grad[i] = (f(x) - f0) / ep;
-                x[i] -= ep;
-            }
+            eps = [];
+            for (i = 0; i < x.length; i++)
+                eps.push(ep);
         } else if (ep.length === x.length) {
-            // `ep` is a vector.
-            for (i = 0; i < x.length; i++) {
-                x[i] += ep[i];
-                grad[i] = (f(x) - f0) / ep[i];
-                x[i] -= ep[i];
-            }
+            eps = ep;
         } else throw "Size mismatch in _approx_fprime.";
 
+        for (i = 0; i < x.length; i++) {
+            x[i] += eps[i];
+            grad[i] = (f(x) - f0) / eps[i];
+            x[i] -= eps[i];
+        }
+
         return grad;
+    };
+
+    optimize._approx_jacobian = function (x, f, ep) {
+        // Approximate NxM dimensional gradient of the vector function
+        // f using forward finite difference.
+        var i, x0, f0 = $V(f(x)), grad = new Array();
+
+        x = vector.atleast_1d(x);
+        x0 = vector.copy(x);
+
+        if (typeof(ep.length) === "undefined") {
+            eps = [];
+            for (i = 0; i < x.length; i++)
+                eps.push(ep);
+        } else if (ep.length === x.length) {
+            eps = ep;
+        } else throw "Size mismatch in _approx_fprime.";
+
+        for (i = 0; i < x.length; i++) {
+            x[i] = x0[i] + eps[i];
+            grad[i] = $V(f(x)).subtract(f0).x(1.0 / eps[i]).elements;
+            x[i] = x0[i];
+        }
+
+        return $M(grad).transpose();
     };
 
     optimize._max_abs_diff = function (x0, x) {
@@ -278,6 +322,106 @@ window.optimize = (function () {
         console.log("Function value =", fval);
 
         return x;
+    };
+
+    optimize.newton = function (fn, x0, opts) {
+        // fn should return the chi vector (data - model) / sigma.
+        // Also, this function uses _dumb-ass_ inversion. We suck.
+        var N, ftol, maxiter, fprime, ep, alpha, J, JT, JTJ, diagJTJ,
+            JTfx0, dx, fx, fx0, df;
+
+        x0 = vector.atleast_1d(x0);
+        chi0 = fn(x0);
+        chi20 = vector.dot(chi0, chi0);
+
+        // Defaults.
+        if (!_q(opts)) opts = {};
+        ftol = _q(opts.ftol) ? opts.ftol : 1e-10;
+        ep = _q(opts.ep) ? opts.ep : 1.49e-8;  // Magic number from scipy.
+        maxiter = _q(opts.maxiter) ? opts.maxiter : 200 * x0.length;
+        fprime = _q(opts.fprime) ? opts.fprime : function (x) {
+            return optimize._approx_fprime(x, fn, ep);
+        };
+
+        alpha = 1.0;
+
+        for (i = 0; i < maxiter; i++) {
+            J = optimize._approx_jacobian(x0, fn, ep);
+            JT = J.transpose()
+            JTJ = JT.x(J);
+            diagJTJ = Matrix.Diagonal(JTJ.diagonal().elements);
+            JTfx = JT.x($V(chi0));
+
+            dx = JTJ.inv().x(JTfx);
+            // dx = JTJ.add(diagJTJ.x(lambda)).inv().x(JTfx);
+
+            x_best = vector.copy(x0);
+            chi_best = vector.copy(chi0);
+            chi2_best = chi20;
+
+            for (n = 0; n <= 5; n++) {
+                alpha = Math.pow(2, -n);
+
+                x_try = vector.subtract(x0, dx.x(alpha).elements);
+                chi_try = fn(x_try);
+                chi2_try = vector.dot(chi_try, chi_try);
+
+                console.log(alpha, chi2_try, chi2_best);
+                if (chi2_try < chi2_best) {
+                    x_best = x_try;
+                    chi_best = chi_try;
+                    chi2_best = chi2_try;
+                }
+            }
+
+            dchi2 = chi20 - chi2_best;
+
+            x0 = x_best;
+            chi0 = chi_best;
+            chi20 = chi2_best;
+
+            if (dchi2 < 0.0) throw "Failure";
+
+            if (i > 1 && dchi2 < ftol)
+                break;
+        }
+
+        console.log("Converged after", i, "iterations.");
+
+        return x0;
+    };
+
+    optimize.test = function () {
+        var x, synth, data, chi, chi2, p0 = [10.5, 6.0], truth = [5.3, 3.0],
+            p_newton, p_fmin;
+
+        synth = function (x, noise) {
+            var t, result = [], sky = x[0], sig = x[1], v, norm;
+            v2 = sig * sig;
+            norm = 1.0 / Math.sqrt(2 * Math.PI * v2);
+            for (t = -10; t <= 10; t++)
+                result.push(sky + Math.exp(-0.5 * t * t / v2) * norm +
+                        noise * window.randomNormal());
+            return result;
+        };
+
+        data = synth(truth, 0.1);
+
+        chi = function (x) {
+            return vector.subtract(data, synth(x, 0.0));
+        };
+
+        chi2 = function (x) {
+            var f = chi(x);
+            return vector.dot(f, f);
+        };
+
+        p_newton = optimize.newton(chi, p0);
+        p_fmin = optimize.fmin(chi2, p0);
+
+        console.log("truth:", truth);
+        console.log("p_newton:", p_newton);
+        console.log("p_fmin:", p_fmin);
     };
 
     optimize.vector = vector;
