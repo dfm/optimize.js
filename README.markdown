@@ -4,7 +4,9 @@ optimize.js
 [This](http://en.wikipedia.org/wiki/Mathematical_optimization) kind of
 optimization. Not [that](https://developers.google.com/closure/compiler/).
 
-This was ported from the `scipy` core.
+This was ported from the `scipy.optimize` and we seem to be about an order
+of magnitude faster than the Python version but that hasn't been too well
+tested.
 
 Usage
 -----
