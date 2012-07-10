@@ -155,20 +155,19 @@ window.optimize = (function () {
         return max;
     };
 
-    optimize.fmin = function (func, x0, xtol, ftol, maxiter, maxfun,
-            nonzdelt, zdelt) {
+    optimize.fmin = function (func, x0, opts) {
         // Optimize a function using Nelder-Mead.
         var N, rho, chi, psi, sigma, sim, fsim, i, j, iterations;
-        var x, fval;
+        var nonzdelt, zdelt, x, fval;
 
         x0 = vector.atleast_1d(x0);
         N = x0.length;
 
         // Defaults.
-        if (!_q(xtol)) xtol = 1e-4;
-        if (!_q(ftol)) ftol = 1e-4;
-        if (!_q(maxiter)) maxiter = 200 * N;
-        if (!_q(maxfun)) maxfun = 200 * N;
+        if (!_q(opts)) opts = {};
+        xtol = _q(opts.xtol) ? opts.xtol : 1e-6;
+        ftol = _q(opts.ftol) ? opts.ftol : 1e-6;
+        maxiter = _q(opts.maxiter) ? opts.maxiter : 200 * N;
 
         // Magic numbers from `scipy`.
         rho = 1;
