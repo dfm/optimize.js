@@ -366,7 +366,6 @@ window.optimize = (function () {
                 chi_try = fn(x_try);
                 chi2_try = vector.dot(chi_try, chi_try);
 
-                console.log(alpha, chi2_try, chi2_best);
                 if (chi2_try < chi2_best) {
                     x_best = x_try;
                     chi_best = chi_try;
