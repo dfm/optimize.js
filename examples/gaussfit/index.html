@@ -3,13 +3,14 @@
 <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
 
-    <title>optimize.js &mdash; Fit a Gaussian with a Background</title>
+    <title>optimize.js &mdash; Gaussian with a Noisy Polynomial Background</title>
 
     <script type="text/javascript" src="../../jquery.min.js"></script>
     <script type="text/javascript" src="../../d3.v2.min.js"></script>
     <!-- <script type="text/javascript" src="http://d3js.org/d3.v2.min.js"></script> -->
     <script type="text/javascript" src="../../sylvester-min.js"></script>
     <script type="text/javascript" src="../../optimize.js"></script>
+    <script type="text/javascript" src="gaussfit.js"></script>
 
     <style type="text/css">
 
@@ -122,7 +123,7 @@
 <div id="container">
     <h1>
         <a href="https://github.com/dfm/optimize.js">optimize.js</a>
-        <small>| Fit a Gaussian with a Background</small>
+        <small>| Gaussian with a Noisy Polynomial Background</small>
     </h1>
     <div class="header">
         <div class="top-left">
@@ -146,75 +147,32 @@
 
 <script type="text/javascript" charset="utf-8">
 
-var i, x, truth, model = function (a, x) {
-    var i, j, result = [], sig2 = a[1] * a[1], norm;
-    norm = a[0] / Math.sqrt(2 * Math.PI * sig2);
-
-    x = optimize.vector.atleast_1d(x);
-    a = optimize.vector.atleast_1d(a);
-
-    for (i = 0; i < x.length; i++) {
-        var diff = x[i] - a[2];
-        result.push(norm * Math.exp(-0.5 * diff * diff / sig2));
-    }
-
-    for (j = 3; j < a.length; j++) {
-        for (i = 0; i < x.length; i++) {
-            result[i] += a[j] * Math.pow(x[i], j - 3);
-        }
-    }
-
-    return result;
-};
-
 // Generating some fake data.
-xrange = [-1, 1];
-data = [];
-true_data = [];
-noise = 0.2;
+var w = 800, h = 500;
+var data = new Dataset(300, 0.2);
+var xscale = d3.scale.linear().range([0, w]).domain(data.xrange);
+var yscale = d3.scale.linear().range([h, 0])
+     .domain([d3.min(data.data, function (d) { return d.y - d.yerr; }) - 0.5,
+              d3.max(data.data, function (d) { return d.y + d.yerr; }) + 0.5]);
 
-var generate_data = function () {
-    truth = [-2 * Math.random(), 0.1 + 0.01 * Math.random(),
-          0.2 * ((xrange[1] - xrange[0]) * Math.random() + xrange[0]),
-          5 * Math.random() - 2.5, 3 * Math.random() - 1.5,
-          Math.random() - 0.5, Math.random() - 0.5];
-    data = [];
-    true_data = [];
-    for (i = 0; i < 200; i++) {
-        var x0 = (xrange[1] - xrange[0]) * Math.random() + xrange[0];
-        data.push({x: x0, y: model(truth, x0)[0] + noise * window.randomNormal()});
-    }
 
-    for (i = xrange[0]; i <= xrange[1]; i += (xrange[1] - xrange[0]) / 500.) {
-        true_data.push({x: i, y: model(truth, i)[0]});
-    }
-
-    x_scale = d3.scale.linear().range([0, 800]).domain(xrange);
-    y_scale = d3.scale.linear().range([500, 0])
-        .domain([d3.min(data, function (d) { return d.y - noise; }) - 0.5,
-                d3.max(data, function (d) { return d.y + noise; }) + 0.5]);
-};
-generate_data();
-
-// Truth line.
-
-var svg = d3.select("#container").append("svg:svg")
-        .attr("width", 800)
-        .attr("height", 500)
+var g = d3.select("#container")
+        .append("svg:svg")
+            .attr("width", w)
+            .attr("height", h)
         .append("svg:g");
 
-var line = d3.svg.line()
-        .x(function(d) { return x_scale(d.x); })
-        .y(function(d) { return y_scale(d.y); });
+var line_drawer = d3.svg.line()
+        .x(function(d) { return xscale(d.x); })
+        .y(function(d) { return yscale(d.y); });
 
 var true_line = svg.append("svg:path")
-        .attr("d", line(true_data))
+        .attr("d", line_drawer(data.line()))
         .attr("stroke-width", 5.0)
         .attr("stroke", "#f89406")
         .attr("fill", "transparent")
         .attr("opacity", 0.7);
 
-// Fit the line.
 var fit_line = svg.append("svg:path")
         .attr("stroke-width", 3.0)
         .attr("stroke", "#049cdb")
@@ -222,27 +180,23 @@ var fit_line = svg.append("svg:path")
         .attr("opacity", 1.0);
 
 var datapoints = svg.selectAll("circle")
-        .data(data)
-    .enter().append("circle")
-        .attr("cx", function(d) { return x_scale(d.x); })
-        .attr("cy", function(d) { return y_scale(d.y); })
-        .attr("r", 4);
+            .data(data.data)
+        .enter().append("circle")
+            .attr("cx", function(d) { return xscale(d.x); })
+            .attr("cy", function(d) { return yscale(d.y); })
+            .attr("r", 4);
 
 var errorbars = svg.selectAll("line")
-        .data(data)
-    .enter().append("line")
-        .attr("x1", function (d) { return x_scale(d.x); })
-        .attr("x2", function (d) { return x_scale(d.x); })
-        .attr("y1", function (d) { return y_scale(d.y - noise); })
-        .attr("y2", function (d) { return y_scale(d.y + noise); })
-        .attr("stroke", "black")
-        .attr("stroke-width", 2.0);
+            .data(data.data)
+        .enter().append("line")
+            .attr("x1", function (d) { return xscale(d.x); })
+            .attr("x2", function (d) { return xscale(d.x); })
+            .attr("y1", function (d) { return yscale(d.y - d.yerr); })
+            .attr("y2", function (d) { return yscale(d.y + d.yerr); })
+            .attr("stroke", "black")
+            .attr("stroke-width", 2.0);
 
 var draw_fit = function (p) {
-    var fit_data = [];
-    for (i = xrange[0]; i <= xrange[1]; i += (xrange[1] - xrange[0]) / 500.) {
-        fit_data.push({x: i, y: model(p, i)[0]});
-    }
     fit_line.transition().attr("d", line(fit_data));
 };
 
