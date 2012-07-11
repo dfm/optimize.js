@@ -146,7 +146,7 @@
 
 <script type="text/javascript" charset="utf-8">
 
-var i, x, truth, model = function (a, x) {
+var p0, i, x, truth, model = function (a, x) {
     var i, j, result = [], sig2 = a[1] * a[1], norm;
     norm = a[0] / Math.sqrt(2 * Math.PI * sig2);
 
@@ -247,17 +247,30 @@ var draw_fit = function (p) {
 };
 
 var do_fit = function () {
-    var i, p0 = [-5, 0.1, 0.1, d3.median(data, function (d) { return d.y; })], p1, chi;
+    var i, p1, chi;
     var order = window.order;
+
     if (order < 0) {
         window.order = 0;
         order = 0;
     }
     $("#order").text(window.order);
 
+    //if (typeof(p0) === "undefined" || p0 === null) {
+    p0 = [-5, 0.1, 0.1, d3.median(data, function (d) { return d.y; })];
     for (i = 1; i <= order; i++) {
         p0.push(0.0);
     }
+    //} else {
+    //    console.log(p0.length, order + 3);
+    //    if (p0.length > order + 3) {
+    //        p0 = p0.slice(0, order + 3);
+    //    } else {
+    //        for (i = p0.length; i <= order + 3; i++) p0.push(0.0);
+    //    }
+    //}
+    //console.log(order, p0.length);
+
     chi = function (p) {
         var i, chi = [];
         if (Math.abs(p[1]) > (xrange[1] - xrange[0]) ||
@@ -281,6 +294,7 @@ var do_fit = function () {
 };
 
 var regenerate = function () {
+    p0 = null;
     generate_data();
     datapoints.transition()
             .duration(750)
